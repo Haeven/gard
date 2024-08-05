@@ -8,5 +8,5 @@ This is the beginning of the TruTube Gard application, which will serve as a hig
 Run following command in this folder as active directory (locate /README.md)
 
 ```
-go install trutube.co/stable/gard
+
 ```
