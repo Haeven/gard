@@ -12,6 +12,15 @@ COPY ./encoder/ ./
 RUN cargo install --path .
 RUN cargo build --release
 
+WORKDIR /app/decoder
+
+# Copy the Engine module files
+COPY ./decoder/ ./
+
+# Set the working directory for Engine installation
+RUN cargo install --path .
+RUN cargo build --release
+
 # Copy the source code
 # COPY ./engine /app/engine
 
@@ -33,6 +42,7 @@ FROM ubuntu:22.04
 # Copy the compiled binary from the builder stage
 COPY --from=builder ./engine /usr/local/bin/engine
 COPY --from=cargo-builder /app/encoder /usr/local/bin/encoder
+COPY --from=cargo-builder /app/decoder /usr/local/bin/decoder
 
 # Create the uploads directory
 # RUN mkdir -p /uploads
