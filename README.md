@@ -13,4 +13,5 @@ docker build -t gard-encoder .
 docker run -p 8081:8081 gard-encoder
 ```
 
-TODO 
+IN PROGRESS
+
