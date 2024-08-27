@@ -1,27 +1,18 @@
-// main.go
-
-package main
+package server
 
 import (
 	"fmt"
 	"log"
+	"net/http"
+
+	"gard-gateway/internal/server"
 )
 
 func main() {
-	// Define the Ozone URL (replace with the actual URL for your setup)
-	ozoneURL := "http://ozone-container:9878"
+	// Set up HTTP handlers
+	server.SetupRoutes()
 
-	// Upload a .webm video file
-	err := uploadFile("path/to/your/video.webm", ozoneURL)
-	if err != nil {
-		log.Fatalf("Error uploading file: %v", err)
-	}
-	fmt.Println("File uploaded successfully.")
-
-	// Download a .webm video file
-	data, err := downloadFile("your-video-key.webm", ozoneURL)
-	if err != nil {
-		log.Fatalf("Error downloading file: %v", err)
-	}
-	fmt.Println("File downloaded successfully, size:", len(data))
+	// Start the server
+	fmt.Println("Starting server on :8080...")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
