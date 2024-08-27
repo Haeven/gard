@@ -1,0 +1,1 @@
+0.0.1 - adds server code, ozone client code to interface with ozone container in docker network; config files
