@@ -1,4 +1,4 @@
-package ozone_client
+package storage
 
 import (
 	"bytes"

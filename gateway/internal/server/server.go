@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	ozone_client "gard-gateway/internal/ozoneclient"
+	storage "gard-gateway/internal/ozoneclient"
 )
 
-var client *ozone_client.SeaweedFSClient
+var client *storage.SeaweedFSClient
 
 func init() {
-	client = ozone_client.NewSeaweedFSClient()
+	client = storage.NewSeaweedFSClient()
 }
 
 // SetupRoutes sets up the HTTP routes for the server
