@@ -5,7 +5,7 @@ FROM golang:1.20-alpine AS builder
 WORKDIR /app
 
 # Copy go.mod and go.sum files first for dependency caching
-COPY ./go.mod ./go.sum ./
+COPY go.mod go.sum ./
 
 # Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
 RUN go mod download

@@ -1,8 +1,10 @@
-// internal/storage/storage.go
-package storage
+// pkg/internal/db/db.go
+package db
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
 	"github.com/uptrace/bun"
@@ -12,7 +14,11 @@ import (
 
 // Initialize initializes the database connection
 func Initialize() *bun.DB {
-	dsn := "postgres://postgres:@localhost:5432/test?sslmode=disable"
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable",
+		os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"),
+		os.Getenv("POSTGRES_HOST"),
+		os.Getenv("POSTGRES_DB"))
 	// dsn := "unix://user:pass@dbname/var/run/postgresql/.s.PGSQL.5432"
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
 

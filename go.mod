@@ -1,4 +1,4 @@
-module gateway
+module gard
 
 go 1.21
 

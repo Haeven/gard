@@ -1,4 +1,4 @@
-// internal/dash/dash.go
+// pkg/internal/dash/dash.go
 package dash
 
 import (

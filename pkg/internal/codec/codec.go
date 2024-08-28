@@ -1,5 +1,5 @@
-// internalencoder/encode.go
-package encoder
+// internal/codec/codec.go
+package codec
 
 import (
 	"os/exec"

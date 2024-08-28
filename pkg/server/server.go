@@ -1,3 +1,5 @@
+// pkg/internal/server/server.go
+
 package server
 
 import (
@@ -7,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	datalake "gateway/internal/datalake"
+	datalake "gard/pkg/internal/datalake"
 )
 
 var client *datalake.SeaweedFSClient

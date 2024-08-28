@@ -1,18 +1,36 @@
 services:
-  gateway:
+  gard:
     build:
       context: . # Assuming Dockerfile is in the root directory
       dockerfile: ./Dockerfile
+      platform: linux/amd64
     ports:
       - "8080:8080" # Expose the Go API server on port 8080
     environment:
       - SEAWEEDFS_MASTER=seaweedfs_master:9333
       - SEAWEEDFS_VOLUME=seaweedfs_volume:8081
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=test
     networks:
-      - seaweedfs-network
+      - datalake-network
+      - db-network
     depends_on:
       - seaweedfs_master
       - seaweedfs_volume
+      - postgres
+
+  postgres:
+    image: postgres:15 # Choose the version that suits your needs
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - db-network
 
   seaweedfs_master:
     image: chrislusf/seaweedfs
@@ -20,7 +38,7 @@ services:
       - "9333:9333"  # SeaweedFS master port
     command: "master -port=9333"
     networks:
-      - seaweedfs-network
+      - datalake-network
     volumes:
       - seaweedfs_data:/data
 
@@ -30,7 +48,7 @@ services:
       - "8081:8081"  # SeaweedFS volume port
     command: "volume -dir=/data -max=5 -mserver=seaweedfs_master:9333 -port=8081"
     networks:
-      - seaweedfs-network
+      - datalake-network
     volumes:
       - seaweedfs_data:/data
     depends_on:
@@ -38,7 +56,10 @@ services:
 
 volumes:
   seaweedfs_data:
+  postgres_data:
 
 networks:
-  seaweedfs-network:
+  datalake-network:
+    driver: bridge
+  db-network:
     driver: bridge

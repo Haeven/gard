@@ -1,14 +1,15 @@
+// gard/cmd/main.go
+
 package main
 
 import (
 	"fmt"
+	"gard/pkg/server"
 	"log"
 	"net/http"
-
-	"gateway/internal/server"
-	// "gateway/internal/codec"
-	// "gateway/internal/dash"
-	// "gateway/internal/storage"
+	// "gard/pkg/internal/codec"
+	// "gard/pkg/internal/dash"
+	// "gard/pkg/internal/storage"
 )
 
 func main() {
