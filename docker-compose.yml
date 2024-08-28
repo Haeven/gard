@@ -1,24 +1,41 @@
 services:
-  gard-gateway:
+  gateway:
     build:
       context: . # Assuming Dockerfile is in the root directory
       dockerfile: ./gateway/Dockerfile
     ports:
       - "8080:8080" # Expose the Go API server on port 8080
-    depends_on:
-      - ozone
-    networks:
-      - backend
-
-  ozone:
-    image: apache/ozone:1.3.0 # Use the latest stable version of Apache Ozone
     environment:
-      - OZONE-SITE.XML_HADOOP_SCM_DATANODE_HTTP_ADDRESS=ozone:9878
-    ports:
-      - "9878:9878" # Expose Apache Ozone on port 9878
+      - SEAWEEDFS_MASTER=127.0.0.1:9333
+      - SEAWEEDFS_VOLUME=127.0.0.1:8080
     networks:
-      - backend
+      - seaweedfs-network
+
+  seaweedfs_master:
+    image: chrislusf/seaweedfs
+    ports:
+      - "9333:9333"  # SeaweedFS master port
+    command: "master -port=9333"
+    networks:
+      - seaweedfs-network
+    volumes:
+      - seaweedfs_data:/data
+
+  seaweedfs_volume:
+    image: chrislusf/seaweedfs
+    ports:
+      - "8081:8081"  # SeaweedFS volume port
+    command: "volume -dir=/data -max=5 -mserver=seaweedfs_master:9333 -port=8081"
+    networks:
+      - seaweedfs-network
+    volumes:
+      - seaweedfs_data:/data
+    depends_on:
+      - seaweedfs_master
+
+volumes:
+  seaweedfs_data:
 
 networks:
-  backend:
+  seaweedfs-network:
     driver: bridge

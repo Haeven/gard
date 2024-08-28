@@ -10,6 +10,12 @@ import (
 	ozone_client "gard-gateway/internal/ozoneclient"
 )
 
+var client *ozone_client.SeaweedFSClient
+
+func init() {
+	client = ozone_client.NewSeaweedFSClient()
+}
+
 // SetupRoutes sets up the HTTP routes for the server
 func SetupRoutes() {
 	http.HandleFunc("/upload", UploadHandler)
@@ -18,85 +24,94 @@ func SetupRoutes() {
 }
 
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
-	ozoneURL := "http://ozone:9878" // Updated to use Docker network alias
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
 
-	file, _, err := r.FormFile("file")
+	// 32 MB is the default max memory for ParseMultipartForm
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "Failed to parse multipart form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Failed to get file", http.StatusBadRequest)
+		http.Error(w, "Failed to get file: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	tempFile, err := os.CreateTemp("", "upload-*.webm")
+	// Use the original filename
+	tempFile, err := os.CreateTemp("", "upload-*"+filepath.Ext(header.Filename))
 	if err != nil {
-		http.Error(w, "Failed to create temp file", http.StatusInternalServerError)
+		http.Error(w, "Failed to create temp file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer os.Remove(tempFile.Name())
 
+	// Save file to temporary location
 	_, err = io.Copy(tempFile, file)
 	if err != nil {
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		http.Error(w, "Failed to save file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = ozone_client.UploadFile(tempFile.Name(), ozoneURL)
+	// Rewind the file for reading
+	if _, err := tempFile.Seek(0, 0); err != nil {
+		http.Error(w, "Failed to reset file for reading: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fileID, err := client.UploadFile(tempFile.Name())
 	if err != nil {
-		http.Error(w, "Failed to upload file to Ozone", http.StatusInternalServerError)
+		http.Error(w, "Failed to upload file to SeaweedFS: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintf(w, "File uploaded successfully.")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "File uploaded successfully. File ID: %s", fileID)
 }
 
 func DownloadHandler(w http.ResponseWriter, r *http.Request) {
-	ozoneURL := "http://ozone:9878" // Updated to use Docker network alias
-
 	if r.Method != http.MethodGet {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
 
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		http.Error(w, "Missing file key", http.StatusBadRequest)
+	fileID := r.URL.Query().Get("id")
+	if fileID == "" {
+		http.Error(w, "Missing file ID", http.StatusBadRequest)
 		return
 	}
 
-	data, err := ozone_client.DownloadFile(key, ozoneURL)
+	data, err := client.DownloadFile(fileID)
 	if err != nil {
-		http.Error(w, "Failed to download file from Ozone", http.StatusInternalServerError)
+		http.Error(w, "Failed to download file from SeaweedFS", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "video/webm")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(key)))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.webm", fileID))
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
 
 func DeleteHandler(w http.ResponseWriter, r *http.Request) {
-	ozoneURL := "http://ozone:9878" // Updated to use Docker network alias
-
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
 
-	key := r.URL.Query().Get("key")
-	if key == "" {
-		http.Error(w, "Missing file key", http.StatusBadRequest)
+	fileID := r.URL.Query().Get("id")
+	if fileID == "" {
+		http.Error(w, "Missing file ID", http.StatusBadRequest)
 		return
 	}
 
-	err := ozone_client.DeleteFile(key, ozoneURL)
+	err := client.DeleteFile(fileID)
 	if err != nil {
-		http.Error(w, "Failed to delete file from Ozone", http.StatusInternalServerError)
+		http.Error(w, "Failed to delete file from SeaweedFS", http.StatusInternalServerError)
 		return
 	}
 

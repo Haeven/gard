@@ -2,16 +2,16 @@
 FROM golang:1.20-alpine AS builder
 
 # Set the Current Working Directory inside the container
-WORKDIR /app
+WORKDIR /app/gateway
 
 # Copy go.mod and go.sum files first for dependency caching
-COPY go.mod go.sum ./
+COPY ./gateway/go.mod ./gateway/go.sum ./
 
 # Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
 RUN go mod download
 
 # Copy the rest of the application code
-COPY . .
+COPY ./gateway .
 
 # Build the Go app with necessary flags for smaller binary size
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd/server
@@ -23,7 +23,7 @@ FROM alpine:latest
 WORKDIR /root/
 
 # Copy the binary from the builder stage
-COPY --from=builder /app/server .
+COPY --from=builder /app/gateway/server .
 
 # Copy any additional necessary files (like config.yaml or .env) if needed
 COPY config.yaml ./
