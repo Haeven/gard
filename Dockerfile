@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go app with necessary flags for smaller binary size
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd
 
 # Start a new stage from scratch (empty base image) for the final image to keep it small
 FROM alpine:latest
@@ -23,7 +23,7 @@ FROM alpine:latest
 WORKDIR /root/
 
 # Copy the binary from the builder stage
-COPY --from=builder /app/gateway/server .
+COPY --from=builder /app/server .
 
 # Copy any additional necessary files (like config.yaml or .env) if needed
 COPY config.yaml ./

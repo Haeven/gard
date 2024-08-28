@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	storage "gateway/internal/storage"
+	datalake "gateway/internal/datalake"
 )
 
-var client *storage.SeaweedFSClient
+var client *datalake.SeaweedFSClient
 
 func init() {
-	client = storage.NewSeaweedFSClient()
+	client = datalake.NewSeaweedFSClient()
 }
 
 // SetupRoutes sets up the HTTP routes for the server
