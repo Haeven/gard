@@ -5,6 +5,7 @@ package server
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -65,14 +66,14 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileID, err := client.UploadFile(tempFile.Name())
+	fileID, mpdFileID, err := client.UploadFile(tempFile.Name())
 	if err != nil {
 		http.Error(w, "Failed to upload file to SeaweedFS: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "File uploaded successfully. File ID: %s", fileID)
+	fmt.Fprintf(w, "File uploaded successfully. File ID: %s, MPD File ID: %s", fileID, mpdFileID)
 }
 
 func DownloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +88,27 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := client.DownloadFile(fileID)
+	// Get the MPD content
+	mpd, err := client.GetMPDContent(fileID) //TODO change GetMPDContent fileid argument to take videofile then generate the mpd file name ([videofile].mpd)
+	if err != nil {
+		log.Fatalf("Failed to get MPD content: %v", err)
+	}
+
+	// Print available resolutions
+	for _, period := range mpd.Periods {
+		for _, adaptationSet := range period.AdaptationSets {
+			for _, rep := range adaptationSet.Representations {
+				fmt.Printf("Available resolution: %s\n", rep.ID)
+			}
+		}
+	}
+
+	// Download a specific representation
+	resolution := "720p"
+	videoData, err := client.GetRepresentation(fileID, resolution)
+	if err != nil {
+		log.Fatalf("Failed to get representation: %v", err)
+	}
 	if err != nil {
 		http.Error(w, "Failed to download file from SeaweedFS", http.StatusInternalServerError)
 		return
@@ -96,7 +117,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "video/webm")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.webm", fileID))
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	w.Write(videoData)
 }
 
 func DeleteHandler(w http.ResponseWriter, r *http.Request) {

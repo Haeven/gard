@@ -1,3 +1,4 @@
+// pkg/internal/datalake/datalake.go
 package datalake
 
 import (
@@ -5,14 +6,13 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	codec "gard/pkg/internal/codec"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 )
 
 // SeaweedFSClient represents a client for interacting with SeaweedFS
@@ -30,53 +30,66 @@ func NewSeaweedFSClient() *SeaweedFSClient {
 }
 
 // UploadFile uploads a file to SeaweedFS
-func (c *SeaweedFSClient) UploadFile(videoFile string) (map[string]string, error) {
+func (c *SeaweedFSClient) UploadFile(videoFile string) (map[string]string, string, error) {
 	// Step 1: Generate segments and MPD file
 	outputDir := "output_segments"
 	err := os.MkdirAll(outputDir, os.ModePerm)
 	if err != nil {
-		return nil, fmt.Errorf("error creating output directory: %w", err)
+		return nil, "", fmt.Errorf("error creating output directory: %w", err)
 	}
 
-	err = generateSegments(videoFile, outputDir)
+	err = codec.GenerateSegments(videoFile, outputDir)
 	if err != nil {
-		return nil, fmt.Errorf("error generating segments: %w", err)
+		return nil, "", fmt.Errorf("error generating segments: %w", err)
 	}
 
-	err = generateMPD(outputDir)
+	err = codec.GenerateMPD(outputDir)
 	if err != nil {
-		return nil, fmt.Errorf("error generating MPD file: %w", err)
+		return nil, "", fmt.Errorf("error generating MPD file: %w", err)
 	}
 
 	// Step 2: Upload the original file
 	originalFileID, err := c.uploadFile(videoFile)
 	if err != nil {
-		return nil, fmt.Errorf("error uploading original file: %w", err)
+		return nil, "", fmt.Errorf("error uploading original file: %w", err)
 	}
 
 	// Step 3: Upload segments and MPD file
 	files := []string{"output.mpd"}
-	segments, err := filepath.Glob(filepath.Join(outputDir, "segment_*.mp4"))
+	segments, err := filepath.Glob(filepath.Join(outputDir, fmt.Sprintf("%s_segment_*.mp4", videoFile)))
 	if err != nil {
-		return nil, fmt.Errorf("error listing segment files: %w", err)
+		return nil, "", fmt.Errorf("error listing segment files: %w", err)
 	}
 	files = append(files, segments...)
 
 	fileIDs := make(map[string]string)
 	fileIDs["original"] = originalFileID
+	var mpdFileID string
 	for _, file := range files {
 		fid, err := c.uploadFile(file)
 		if err != nil {
-			return nil, fmt.Errorf("error uploading file %s: %w", file, err)
+			return nil, "", fmt.Errorf("error uploading file %s: %w", file, err)
 		}
-		fileIDs[filepath.Base(file)] = fid
+		if filepath.Ext(file) == ".mpd" {
+			mpdFileID = fid
+		} else {
+			fileIDs[filepath.Base(file)] = fid
+		}
 	}
 
-	return fileIDs, nil
+	return fileIDs, mpdFileID, nil
+}
+func (c *SeaweedFSClient) DownloadFile(fileID string) ([]byte, error) {
+	// First, check if the requested file is the MPD
+	if filepath.Ext(fileID) == ".mpd" {
+		return c.downloadSingleFile(fileID)
+	}
+
+	// If it's not the MPD, assume it's a segment file
+	return c.downloadSingleFile(fileID)
 }
 
-// DownloadFile downloads a file from SeaweedFS using a file ID
-func (c *SeaweedFSClient) DownloadFile(fileID string) ([]byte, error) {
+func (c *SeaweedFSClient) downloadSingleFile(fileID string) ([]byte, error) {
 	downloadURL := fmt.Sprintf("http://%s/%s", c.VolumeURL, fileID)
 	fmt.Printf("Attempting to download file from: %s\n", downloadURL)
 
@@ -203,77 +216,62 @@ func (c *SeaweedFSClient) getUploadURL() (string, error) {
 	return fmt.Sprintf("http://%s/%s", result["publicUrl"], result["fid"]), nil
 }
 
-// generateSegments generates video segments using ffmpeg
-func generateSegments(videoFile, outputDir string) error {
-	cmd := exec.Command("ffmpeg", "-i", videoFile, "-c", "copy", "-map", "0", "-f", "segment", "-segment_time", "10", "-segment_format", "mp4", filepath.Join(outputDir, "segment_%03d.mp4"))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+func (c *SeaweedFSClient) GetMPDContent(mpdFileID string) (*MPD, error) {
+	mpdData, err := c.downloadSingleFile(mpdFileID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download MPD file: %v", err)
+	}
+
+	var mpd MPD
+	err = xml.Unmarshal(mpdData, &mpd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse MPD file: %v", err)
+	}
+
+	return &mpd, nil
 }
 
-// generateMPD generates an MPD file for the video segments
-func generateMPD(outputDir string) error {
-	segmentFiles, err := filepath.Glob(filepath.Join(outputDir, "segment_*.mp4"))
+func (c *SeaweedFSClient) GetRepresentation(mpdFileID, resolution string) ([]byte, error) {
+	mpd, err := c.GetMPDContent(mpdFileID)
 	if err != nil {
-		return fmt.Errorf("error reading segment files: %w", err)
+		return nil, err
 	}
 
-	var segmentURLs []SegmentURL
-	for _, file := range segmentFiles {
-		filename := filepath.Base(file)
-		segmentURLs = append(segmentURLs, SegmentURL{Media: filename})
+	// Find the requested representation
+	var targetRep *Representation
+	for _, period := range mpd.Periods {
+		for _, adaptationSet := range period.AdaptationSets {
+			for _, rep := range adaptationSet.Representations {
+				if rep.ID == resolution {
+					targetRep = &rep
+					break
+				}
+			}
+			if targetRep != nil {
+				break
+			}
+		}
+		if targetRep != nil {
+			break
+		}
 	}
 
-	mpd := MPD{
-		XMLNs:                     "urn:mpeg:dash:schema:mpd:2011",
-		XMLNsXsi:                  "http://www.w3.org/2001/XMLSchema-instance",
-		XsiSchemaLocation:         "urn:mpeg:dash:schema:mpd:2011 http://www.mpegdash.org/schemas/2011/MPD.xsd",
-		MediaPresentationDuration: "PT" + strconv.Itoa(len(segmentURLs)*10) + "S", // Example duration, adjust as needed
-		MinBufferTime:             "PT1.5S",
-		Periods: []Period{
-			{
-				Duration: "PT" + strconv.Itoa(len(segmentURLs)*10) + "S", // Example duration, adjust as needed
-				AdaptationSets: []AdaptationSet{
-					{
-						MimeType: "video/mp4",
-						Codecs:   "avc1.4d401e",
-						Representations: []Representation{
-							createRepresentation("144p", "1 Mbps", "150000", "144", "256", "25", "https://example.com/video_144p/", segmentURLs),
-							// Add more representations for other resolutions as needed
-						},
-					},
-				},
-			},
-		},
+	if targetRep == nil {
+		return nil, fmt.Errorf("representation not found for resolution: %s", resolution)
 	}
 
-	file, err := os.Create(filepath.Join(outputDir, "output.mpd"))
-	if err != nil {
-		return fmt.Errorf("error creating MPD file: %w", err)
-	}
-	defer file.Close()
+	// Download and concatenate all segments for the representation
+	var fullVideo []byte
 
-	encoder := xml.NewEncoder(file)
-	encoder.Indent("  ", "    ")
-	return encoder.Encode(mpd)
-}
-
-// createRepresentation creates a Representation for the MPD file
-func createRepresentation(resolution, bitrate, bandwidth, width, height, frameRate, baseURL string, segmentURLs []SegmentURL) Representation {
-	return Representation{
-		ID:        resolution,
-		Bandwidth: bandwidth,
-		Codecs:    "avc1.4d401e",
-		Width:     width,
-		Height:    height,
-		FrameRate: frameRate,
-		BaseURL:   baseURL,
-		SegmentList: SegmentList{
-			Duration:    "2000000",
-			Timescale:   "1000000",
-			SegmentURLs: segmentURLs,
-		},
+	for _, segmentURL := range targetRep.SegmentList.SegmentURLs {
+		segmentData, err := c.downloadSingleFile(segmentURL.Media)
+		if err != nil {
+			return nil, fmt.Errorf("failed to download segment %s: %v", segmentURL.Media, err)
+		}
+		fullVideo = append(fullVideo, segmentData...)
 	}
+
+	return fullVideo, nil
 }
 
 // SegmentURL represents the URL of a segment in the MPD file

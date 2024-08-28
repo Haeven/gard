@@ -1,5 +1,5 @@
 # Start with the official Golang image to build the Go application
-FROM golang:1.20-alpine AS builder
+FROM  golang:1.20 AS builder
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the Go app with necessary flags for smaller binary size
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server ./cmd
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o server ./cmd
 
 # Start a new stage from scratch (empty base image) for the final image to keep it small
 FROM alpine:latest
