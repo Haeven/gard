@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"gard-gateway/internal/server"
+	"gateway/internal/server"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	storage "gard-gateway/internal/ozoneclient"
+	storage "gateway/internal/storage"
 )
 
 var client *storage.SeaweedFSClient
