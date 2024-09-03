@@ -12,7 +12,7 @@ require (
 	mellium.im/sasl v0.3.1 // indirect
 )
 
-replace pkg/internal/datalake => ./pkg/internal/codec
+replace pkg/internal/datalake => ./pkg/internal/datalake
 
 require (
 	github.com/lib/pq v1.10.9
@@ -21,4 +21,4 @@ require (
 	github.com/uptrace/bun/driver/pgdriver v1.2.1
 )
 
-replace pkg/internal/codec => ./pkg/internal/codec
+replace server/server => ./server/server

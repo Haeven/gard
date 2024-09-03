@@ -4,7 +4,7 @@ package main
 
 import (
 	"fmt"
-	"gard/pkg/server"
+	"gard/server"
 	"log"
 	"net/http"
 	// "gard/pkg/internal/codec"

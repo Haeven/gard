@@ -2,14 +2,11 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log"
-	"os"
-	"path/filepath"
+
+	datalake "gard/pkg/internal/datalake"
 
 	"github.com/segmentio/kafka-go"
-	datalake "gard/pkg/internal/datalake"
 )
 
 var client *datalake.SeaweedFSClient
@@ -62,34 +59,13 @@ func handleUploadEvent(data []byte) {
 	// Parse data to get file content and filename
 	// ...
 
-	// Use the original filename
-	tempFile, err := os.CreateTemp("", "upload-*"+filepath.Ext(filename))
-	if err != nil {
-		log.Printf("Failed to create temp file: %v", err)
-		return
-	}
-	defer os.Remove(tempFile.Name())
-
-	// Save file to temporary location
-	_, err = io.Copy(tempFile, bytes.NewReader(data))
-	if err != nil {
-		log.Printf("Failed to save file: %v", err)
-		return
-	}
-
-	// Rewind the file for reading
-	if _, err := tempFile.Seek(0, 0); err != nil {
-		log.Printf("Failed to reset file for reading: %v", err)
-		return
-	}
-
-	fileID, mpdFileID, err := client.UploadFile(tempFile.Name())
+	fileID, err := client.UploadFile(filename, data)
 	if err != nil {
 		log.Printf("Failed to upload file to SeaweedFS: %v", err)
 		return
 	}
 
-	log.Printf("File uploaded successfully. File ID: %s, MPD File ID: %s", fileID, mpdFileID)
+	log.Printf("File uploaded successfully. File ID: %s", fileID)
 }
 
 func consumeDownloadEvents(r *kafka.Reader) {
@@ -105,34 +81,17 @@ func consumeDownloadEvents(r *kafka.Reader) {
 }
 
 func handleDownloadEvent(data []byte) {
-	// Assume data contains the file ID and resolution
-	// Parse data to get file ID and resolution
+	// Assume data contains the file ID
+	// Parse data to get file ID
 	// ...
 
-	// Get the MPD content
-	mpd, err := client.GetMPDContent(fileID)
+	fileData, err := client.DownloadFile(fileID)
 	if err != nil {
-		log.Printf("Failed to get MPD content: %v", err)
+		log.Printf("Failed to download file: %v", err)
 		return
 	}
 
-	// Print available resolutions
-	for _, period := range mpd.Periods {
-		for _, adaptationSet := range period.AdaptationSets {
-			for _, rep := range adaptationSet.Representations {
-				fmt.Printf("Available resolution: %s\n", rep.ID)
-			}
-		}
-	}
-
-	// Download a specific representation
-	videoData, err := client.GetRepresentation(fileID, resolution)
-	if err != nil {
-		log.Printf("Failed to get representation: %v", err)
-		return
-	}
-
-	// Save or process videoData as needed
+	// Process or save fileData as needed
 	// ...
 }
 
