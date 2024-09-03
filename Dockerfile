@@ -1,6 +1,40 @@
 # Start with the official Golang image to build the Go application
 FROM  golang:1.20 AS builder
 
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+
+# RUN apt-get install libvpx-dev
+# Update package list and install dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    build-essential \
+    git \
+    cmake \
+    libvpx-dev \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install vpxenc (VP9 encoder)
+RUN cd /tmp && \
+    git clone https://github.com/webmproject/libvpx.git && \
+    cd libvpx && \
+    ./configure && \
+    make && \
+    make install && \
+    ldconfig
+
+# Install Av1an
+RUN cd /tmp && \
+    git clone https://github.com/master-of-zen/Av1an.git && \
+    cd Av1an && \
+    make && \
+    cp av1an /usr/local/bin/
+
+# Clean up
+RUN rm -rf /tmp/*
+
+
 # Set the Current Working Directory inside the container
 WORKDIR /app
 

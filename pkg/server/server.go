@@ -1,15 +1,14 @@
-// pkg/internal/server/server.go
-
 package server
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/segmentio/kafka-go"
 	datalake "gard/pkg/internal/datalake"
 )
 
@@ -19,79 +18,102 @@ func init() {
 	client = datalake.NewSeaweedFSClient()
 }
 
-// SetupRoutes sets up the HTTP routes for the server
-func SetupRoutes() {
-	http.HandleFunc("/upload", UploadHandler)
-	http.HandleFunc("/download", DownloadHandler)
-	http.HandleFunc("/delete", DeleteHandler)
+func main() {
+	// Create a new Kafka reader for each event type
+	uploadReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{"localhost:9092"},
+		Topic:   "upload",
+		GroupID: "group-id",
+	})
+	downloadReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{"localhost:9092"},
+		Topic:   "download",
+		GroupID: "group-id",
+	})
+	deleteReader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{"localhost:9092"},
+		Topic:   "delete",
+		GroupID: "group-id",
+	})
+
+	// Start consumers
+	go consumeUploadEvents(uploadReader)
+	go consumeDownloadEvents(downloadReader)
+	go consumeDeleteEvents(deleteReader)
+
+	// Block forever
+	select {}
 }
 
-func UploadHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
+func consumeUploadEvents(r *kafka.Reader) {
+	for {
+		m, err := r.ReadMessage(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to read message: %v", err)
+		}
 
-	// 32 MB is the default max memory for ParseMultipartForm
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		http.Error(w, "Failed to parse multipart form: "+err.Error(), http.StatusBadRequest)
-		return
+		// Process upload event
+		handleUploadEvent(m.Value)
 	}
+}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "Failed to get file: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
+func handleUploadEvent(data []byte) {
+	// Assume data contains the file content and filename
+	// Parse data to get file content and filename
+	// ...
 
 	// Use the original filename
-	tempFile, err := os.CreateTemp("", "upload-*"+filepath.Ext(header.Filename))
+	tempFile, err := os.CreateTemp("", "upload-*"+filepath.Ext(filename))
 	if err != nil {
-		http.Error(w, "Failed to create temp file: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("Failed to create temp file: %v", err)
 		return
 	}
 	defer os.Remove(tempFile.Name())
 
 	// Save file to temporary location
-	_, err = io.Copy(tempFile, file)
+	_, err = io.Copy(tempFile, bytes.NewReader(data))
 	if err != nil {
-		http.Error(w, "Failed to save file: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("Failed to save file: %v", err)
 		return
 	}
 
 	// Rewind the file for reading
 	if _, err := tempFile.Seek(0, 0); err != nil {
-		http.Error(w, "Failed to reset file for reading: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("Failed to reset file for reading: %v", err)
 		return
 	}
 
 	fileID, mpdFileID, err := client.UploadFile(tempFile.Name())
 	if err != nil {
-		http.Error(w, "Failed to upload file to SeaweedFS: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("Failed to upload file to SeaweedFS: %v", err)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "File uploaded successfully. File ID: %s, MPD File ID: %s", fileID, mpdFileID)
+	log.Printf("File uploaded successfully. File ID: %s, MPD File ID: %s", fileID, mpdFileID)
 }
 
-func DownloadHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
+func consumeDownloadEvents(r *kafka.Reader) {
+	for {
+		m, err := r.ReadMessage(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to read message: %v", err)
+		}
 
-	fileID := r.URL.Query().Get("id")
-	if fileID == "" {
-		http.Error(w, "Missing file ID", http.StatusBadRequest)
-		return
+		// Process download event
+		handleDownloadEvent(m.Value)
 	}
+}
+
+func handleDownloadEvent(data []byte) {
+	// Assume data contains the file ID and resolution
+	// Parse data to get file ID and resolution
+	// ...
 
 	// Get the MPD content
-	mpd, err := client.GetMPDContent(fileID) //TODO change GetMPDContent fileid argument to take videofile then generate the mpd file name ([videofile].mpd)
+	mpd, err := client.GetMPDContent(fileID)
 	if err != nil {
-		log.Fatalf("Failed to get MPD content: %v", err)
+		log.Printf("Failed to get MPD content: %v", err)
+		return
 	}
 
 	// Print available resolutions
@@ -104,39 +126,38 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Download a specific representation
-	resolution := "720p"
 	videoData, err := client.GetRepresentation(fileID, resolution)
 	if err != nil {
-		log.Fatalf("Failed to get representation: %v", err)
-	}
-	if err != nil {
-		http.Error(w, "Failed to download file from SeaweedFS", http.StatusInternalServerError)
+		log.Printf("Failed to get representation: %v", err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "video/webm")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.webm", fileID))
-	w.WriteHeader(http.StatusOK)
-	w.Write(videoData)
+	// Save or process videoData as needed
+	// ...
 }
 
-func DeleteHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
+func consumeDeleteEvents(r *kafka.Reader) {
+	for {
+		m, err := r.ReadMessage(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to read message: %v", err)
+		}
 
-	fileID := r.URL.Query().Get("id")
-	if fileID == "" {
-		http.Error(w, "Missing file ID", http.StatusBadRequest)
-		return
+		// Process delete event
+		handleDeleteEvent(m.Value)
 	}
+}
+
+func handleDeleteEvent(data []byte) {
+	// Assume data contains the file ID
+	// Parse data to get file ID
+	// ...
 
 	err := client.DeleteFile(fileID)
 	if err != nil {
-		http.Error(w, "Failed to delete file from SeaweedFS", http.StatusInternalServerError)
+		log.Printf("Failed to delete file from SeaweedFS: %v", err)
 		return
 	}
 
-	fmt.Fprintf(w, "File deleted successfully.")
+	log.Printf("File deleted successfully.")
 }

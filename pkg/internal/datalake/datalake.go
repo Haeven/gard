@@ -56,7 +56,7 @@ func (c *SeaweedFSClient) UploadFile(videoFile string) (map[string]string, strin
 
 	// Step 3: Upload segments and MPD file
 	files := []string{"output.mpd"}
-	segments, err := filepath.Glob(filepath.Join(outputDir, fmt.Sprintf("%s_segment_*.mp4", videoFile)))
+	segments, err := filepath.Glob(filepath.Join(outputDir, fmt.Sprintf("%s_segment_*.webm", videoFile)))
 	if err != nil {
 		return nil, "", fmt.Errorf("error listing segment files: %w", err)
 	}

@@ -1,4 +1,4 @@
-module gard
+module truhub/gard
 
 go 1.21
 
